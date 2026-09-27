@@ -15,6 +15,7 @@ use Sabre\Xml\XmlSerializable;
 class TaxTotal implements XmlSerializable, XmlDeserializable
 {
     private $taxAmount;
+    private $currencyId;
     private $taxSubTotals = [];
 
     /**
@@ -32,6 +33,27 @@ class TaxTotal implements XmlSerializable, XmlDeserializable
     public function setTaxAmount(?float $taxAmount)
     {
         $this->taxAmount = $taxAmount;
+        return $this;
+    }
+
+    /**
+     * The currencyID of the TaxAmount. A document with a tax currency (BT-6)
+     * carries a second TaxTotal in that currency (BT-111).
+     *
+     * @return string|null
+     */
+    public function getCurrencyId(): ?string
+    {
+        return $this->currencyId;
+    }
+
+    /**
+     * @param string|null $currencyId
+     * @return static
+     */
+    public function setCurrencyId(?string $currencyId)
+    {
+        $this->currencyId = $currencyId;
         return $this;
     }
 
@@ -90,7 +112,7 @@ class TaxTotal implements XmlSerializable, XmlDeserializable
                 'name'       => Schema::CBC . 'TaxAmount',
                 'value'      => NumberFormatter::format($this->taxAmount, 2),
                 'attributes' => [
-                    'currencyID' => Generator::$currencyID
+                    'currencyID' => $this->currencyId ?? Generator::$currencyID
                 ]
             ],
         ]);
@@ -115,6 +137,7 @@ class TaxTotal implements XmlSerializable, XmlDeserializable
 
         return (new static())
             ->setTaxAmount(isset($taxAmount) ? floatval($taxAmount['value']) : null)
+            ->setCurrencyId($taxAmount['attributes']['currencyID'] ?? null)
             ->setTaxSubTotals($taxSubTotals);
     }
 }

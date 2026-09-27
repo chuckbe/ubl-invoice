@@ -34,6 +34,7 @@ class Invoice implements XmlSerializable, XmlDeserializable
     /** @var PaymentMeans[] $paymentMeans */
     private $paymentMeans;
     private $taxTotal;
+    private $taxCurrencyTaxTotal;
     private $legalMonetaryTotal;
     /** @var InvoiceLine[] $invoiceLines */
     protected $invoiceLines;
@@ -420,6 +421,27 @@ class Invoice implements XmlSerializable, XmlDeserializable
     }
 
     /**
+     * The VAT total in the tax currency (BT-111): the TaxTotal without
+     * subtotals that Peppol requires when a TaxCurrencyCode (BT-6) is given.
+     *
+     * @return TaxTotal|null
+     */
+    public function getTaxCurrencyTaxTotal(): ?TaxTotal
+    {
+        return $this->taxCurrencyTaxTotal;
+    }
+
+    /**
+     * @param TaxTotal|null $taxCurrencyTaxTotal
+     * @return static
+     */
+    public function setTaxCurrencyTaxTotal(?TaxTotal $taxCurrencyTaxTotal)
+    {
+        $this->taxCurrencyTaxTotal = $taxCurrencyTaxTotal;
+        return $this;
+    }
+
+    /**
      * @return LegalMonetaryTotal
      */
     public function getLegalMonetaryTotal(): ?LegalMonetaryTotal
@@ -634,7 +656,7 @@ class Invoice implements XmlSerializable, XmlDeserializable
      */
     public function setBillingReferences(array $billingReferences)
     {
-        $this->billingReferences = $billingReferences;
+        $this->billingReferences = array_values($billingReferences);
         return $this;
     }
 
@@ -1005,6 +1027,12 @@ class Invoice implements XmlSerializable, XmlDeserializable
             ]);
         }
 
+        if ($this->taxCurrencyTaxTotal !== null) {
+            $writer->write([
+                Schema::CAC . "TaxTotal" => $this->taxCurrencyTaxTotal,
+            ]);
+        }
+
         // DebitNote uses RequestedMonetaryTotal instead of LegalMonetaryTotal
         $monetaryTotalTagName = $this->xmlTagName === 'DebitNote' ? 'RequestedMonetaryTotal' : 'LegalMonetaryTotal';
         $writer->write([
@@ -1046,11 +1074,31 @@ class Invoice implements XmlSerializable, XmlDeserializable
             $collection,
         );
 
-        /** @var ?TaxTotal $taxTotal */
-        $taxTotal = ReaderHelper::getTagValue(
+        // Peppol R053/R054: the invoice-currency TaxTotal is the one with
+        // subtotals; a second one without subtotals is in the tax currency.
+        // Their order isn't fixed, so pick by content rather than position.
+        /** @var TaxTotal[] $taxTotals */
+        $taxTotals = ReaderHelper::getArrayValue(
             Schema::CAC . "TaxTotal",
             $collection,
         );
+
+        $taxTotal = $taxTotals[0] ?? null;
+        $taxCurrencyTaxTotal = null;
+
+        foreach ($taxTotals as $candidate) {
+            if (!empty($candidate->getTaxSubTotals())) {
+                $taxTotal = $candidate;
+                break;
+            }
+        }
+
+        foreach ($taxTotals as $candidate) {
+            if ($candidate !== $taxTotal && empty($candidate->getTaxSubTotals())) {
+                $taxCurrencyTaxTotal = $candidate;
+                break;
+            }
+        }
 
         /** @var ?LegalMonetaryTotal $legalMonetaryTotal */
         $legalMonetaryTotal = ReaderHelper::getTagValue(
@@ -1154,6 +1202,7 @@ class Invoice implements XmlSerializable, XmlDeserializable
                 ),
             )
             ->setTaxTotal($taxTotal)
+            ->setTaxCurrencyTaxTotal($taxCurrencyTaxTotal)
             ->setLegalMonetaryTotal($legalMonetaryTotal)
             ->setInvoiceLines(
                 ReaderHelper::getArrayValue(
