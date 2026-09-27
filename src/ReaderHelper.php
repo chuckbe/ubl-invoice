@@ -48,13 +48,15 @@ class ReaderHelper
      */
     public static function getArrayValue(string $name, ArrayCollection $collection)
     {
-        return $collection
+        // Re-index: filter() keeps each element's position among all
+        // siblings, so the first match wouldn't be at key 0.
+        return array_values($collection
             ->filter(function ($element) use ($name) {
                 return $element['name'] === $name;
             })
             ->map(function ($element) {
                 return $element['value'];
             })
-            ->toArray();
+            ->toArray());
     }
 }
